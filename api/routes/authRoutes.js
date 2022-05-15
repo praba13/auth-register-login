@@ -6,6 +6,8 @@ import User from '../models/UserModel.js';
 import { verifyToken } from '../middleware/verifyTokenMiddleware.js';
 const route = express.Router();
 
+let refresh_token_array = [];
+
 //Register
 route.post('/addUser', async (req, res) => {
   try {
@@ -30,6 +32,10 @@ const accessTkn = (id) => {
   });
 };
 
+const refreshTkn = (id) => {
+  return jwt.sign({ userId: id }, process.env.REFRESH_TOKEN_SECRET);
+};
+
 //Login
 route.post('/login', async (req, res) => {
   try {
@@ -49,7 +55,9 @@ route.post('/login', async (req, res) => {
     );
     */
     const token = accessTkn(user._id);
-    res.status(200).json({ user, token });
+    const refresh_token = refreshTkn(user._id);
+    refresh_token_array.push(refresh_token);
+    res.status(200).json({ user, token, refresh_token });
   } catch (err) {
     res.status(500).json(err);
   }
@@ -58,6 +66,36 @@ route.post('/login', async (req, res) => {
 route.get('/home', verifyToken, (req, res) => {
   //res.status(200).json(req.user.userId + 'Welcome to Homepage');
   res.status(200).json('Welcome to Homepage');
+});
+
+route.post('/getNewTokenUsingRefresh', (req, res) => {
+  const refreshTkn_v = req.body.refresh_token;
+  if (!refreshTkn_v) {
+    return res.status(401).json('Token Required');
+  }
+  const decode = jwt.verify(refreshTkn_v, process.env.REFRESH_TOKEN_SECRET);
+  if (!decode) {
+    return res.status(403).json('Invalid token');
+  }
+
+  const find_token = refresh_token_array.find(
+    (token) => token === refreshTkn_v
+  );
+
+  const user_id = decode.userId;
+  //console.log(user_id);
+
+  if (!find_token) {
+    return res.status(403).json('Token has been expired. Sign in again');
+  } else {
+    refresh_token_array = refresh_token_array.filter(
+      (token) => token !== refreshTkn_v
+    );
+    const token = accessTkn(user_id);
+    const refresh_token = refreshTkn(user_id);
+    refresh_token_array.push(refresh_token);
+    return res.status(200).json({ token, refresh_token });
+  }
 });
 
 export default route;
